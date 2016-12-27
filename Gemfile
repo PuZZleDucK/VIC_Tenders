@@ -4,7 +4,7 @@
 
 source "https://rubygems.org"
 
-ruby ">= 2.3.5"
+ruby "2.3.3"
 
 # Basic scraping
 gem "scraperwiki", git: "https://github.com/openaustralia/scraperwiki-ruby.git", branch: "morph_defaults"

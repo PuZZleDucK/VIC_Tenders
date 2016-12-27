@@ -4,7 +4,7 @@
 
 source "https://rubygems.org"
 
-ruby "2.3.3"
+ruby "2.3.1"
 
 # Basic scraping
 gem "scraperwiki", git: "https://github.com/openaustralia/scraperwiki-ruby.git", branch: "morph_defaults"
@@ -13,5 +13,5 @@ gem "mechanize"
 # Javascript enabled scraping
 gem 'capybara', '>= 2.1.0'
 gem 'poltergeist', '>= 1.9.0'
-gem 'phantomjs'
+gem 'phantomjs', '>= 2.1.1'
 

@@ -101,6 +101,20 @@ end
   end
 
 
+def find_between(text, pre_string, post_string)
+  matches = text.match(/#{pre_string}(.*?)#{post_string}/)
+  puts "MATCHES: #{matches}"
+  if matches && matches.length > 1
+    matches[1].strip
+  else
+    puts "Match failed!"
+    puts "nothing between '#{pre_string}' & '#{post_string}'"
+    puts "in #{text}"
+    ""
+  end
+end
+
+
   def extract_contract_data text, contract_index, print=false
     gov_entity = find_between(text, "Public Body:", "Contract Number:")
     gov_entity_contract_numb = find_between(text, "Contract Number:","Title:")
@@ -128,7 +142,7 @@ end
     end
     contract_details = find_between(text, "Description", "Agency Contact Details")
     agency_person = find_between(text, "Contact Person:", "Contact for factual information purposes")
-    agency_phone = find_between(text, "Contact Number:", "Email Address:")
+    agency_phone = find_between(text, "Contact Number:", "Email Address:") # check for contact # existance
     agency_email = find_between(text, "Email Address:", "Supplier Information")
     supplier_name = find_between(text, "Supplier Name:", "ABN:")
     supplier_abn = find_between(text, "ABN:", "ACN:")
@@ -208,6 +222,23 @@ end
   end
 
   def store_or_skip contract_data, refresh = false
+    record = {
+      'council_reference' => "test ref",
+      'address' => "test address",
+      'description' => "test description",
+      'info_url' => "test info_url",
+      'date_received' => @date_received,
+      'date_scraped' => @date_scraped,
+      'comment_url' => @comment_url,
+    }
+    if (ScraperWiki.select("* from data where `council_reference`='#{record['council_reference']}'").empty? rescue true)
+      puts "Storing " + record['council_reference']
+  #    puts record
+      ScraperWiki.save_sqlite(['council_reference'], record)
+    else
+      puts "Skipping already saved record " + record['council_reference']
+    end
+
     if refresh
       update_this_contract contract_data
     end
@@ -240,18 +271,6 @@ end
   end
 
 
-
-def find_between(text, pre_string, post_string)
-  matches = text.match(/#{pre_string}(.*?)#{post_string}/)
-  if matches && matches.length > 1
-    matches[1].strip
-  else
-    puts "Match failed!"
-    puts "nothing between '#{pre_string}' & '#{post_string}'"
-    puts "in #{text}"
-    ""
-  end
-end
 
 # # Read in a page
 # page = agent.get("http://foo.com")

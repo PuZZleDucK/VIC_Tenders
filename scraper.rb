@@ -2,7 +2,6 @@
 require 'scraperwiki'
 require 'capybara/poltergeist'
 
-# agent = Mechanize.new
 Capybara.javascript_driver = :poltergeist
 @options = { js_errors: false, timeout: 1800, phantomjs_logger: StringIO.new, logger: nil, phantomjs_options: ['--load-images=no', '--ignore-ssl-errors=yes'] }
 @blacklist = ["https://maxcdn.bootstrapcdn.com/", "https://www.tenders.vic.gov.au/tenders/res/" ]
@@ -40,15 +39,14 @@ def Unspsc.all()
   Unspsc
 end
 
-
-  def lookup_contract_unspsc text
-    Unspsc.all.each do |unspsc_category|
-      if text.include?(unspsc_category.unspsc_name)
-        return unspsc_category.unspsc_code
-      end
+def lookup_contract_unspsc text
+  Unspsc.all.each do |unspsc_category|
+    if text.include?(unspsc_category.unspsc_name)
+      return unspsc_category.unspsc_code
     end
-    0
   end
+  0
+end
 
 
   def lookup_contract_status text
@@ -103,7 +101,6 @@ end
 
 def find_between(text, pre_string, post_string)
   matches = text.match(/#{pre_string}(.*?)#{post_string}/)
-  puts "MATCHES: #{matches}"
   if matches && matches.length > 1
     matches[1].strip
   else
@@ -157,7 +154,7 @@ end
     state = find_between(text, "State:", "Postcode:")
     post_code = find_between(text, "Postcode:", "Email Address:")
     supplier_address = "#{street}, #{suburb}, #{state} #{post_code}"
-    supplier_email = find_between(text, "Email Address:", "State Government of Victoria") # or "Text size: Reduce text size Increase text size Print: Print page"
+    supplier_email = find_between(text, "Email Address:", "State Government of Victoria")
     { department_id: lookup_department_id(gov_entity, print),
       contract_number: gov_entity_contract_numb,
       contract_title: contract_title,
@@ -216,58 +213,57 @@ end
       existing_contract.vt_supplier_acn = contract_data[:supplier_acn]
       existing_contract.vt_supplier_address = contract_data[:supplier_address]
       existing_contract.project_id = contract_data[:vt_identifier]
-      existing_contract.save
-      update_supplier_reference existing_contract
     end
   end
 
-  def store_or_skip contract_data, refresh = false
-    record = {
-      'council_reference' => "test ref",
-      'address' => "test address",
-      'description' => "test description",
-      'info_url' => "test info_url",
-      'date_received' => @date_received,
-      'date_scraped' => @date_scraped,
-      'comment_url' => @comment_url,
-    }
-    if (ScraperWiki.select("* from data where `council_reference`='#{record['council_reference']}'").empty? rescue true)
-      puts "Storing " + record['council_reference']
+  def store_non_duplicate record, id_field
+    if (ScraperWiki.select("* from data where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
+      puts "Storing #{record[id_field]}"
   #    puts record
-      ScraperWiki.save_sqlite(['council_reference'], record)
+      ScraperWiki.save_sqlite(["#{id_field}"], record)
     else
-      puts "Skipping already saved record " + record['council_reference']
+      puts "Skipping already saved record #{record[id_field]}"
     end
 
-    if refresh
-      update_this_contract contract_data
-    end
-    if store_this_contract? contract_data
-      contract = Contract.create({
-        vt_contract_number: contract_data[:contract_number],
-        vt_status_id: contract_data[:contract_status],
-        vt_title: contract_data[:contract_title],
-        vt_start_date: contract_data[:contract_start],
-        vt_end_date: contract_data[:contract_end],
-        vt_total_value: contract_data[:contract_value],
-        vt_department_id: contract_data[:department_id],
-        vt_contract_type_id: contract_data[:contract_type],
-        vt_value_type_id: contract_data[:value_type_index],
-        vt_unspc_id: contract_data[:contract_unspsc],
-        vt_contract_description: contract_data[:contract_details],
-        vt_supplier_id: 0,
-        vt_address_id: 0,
-        vt_agency_person: contract_data[:agency_person],
-        vt_agency_phone: contract_data[:agency_phone],
-        vt_agency_email: contract_data[:agency_email],
-        vt_supplier_name: contract_data[:supplier_name],
-        vt_supplier_abn: contract_data[:supplier_abn],
-        vt_supplier_acn: contract_data[:supplier_acn],
-        vt_supplier_address: contract_data[:supplier_address],
-        project_id: contract_data[:vt_identifier]
-      })
-      update_supplier_reference contract
-    end
+  end
+
+
+  def store_or_skip contract_data, refresh = false
+#    record = {
+#      'council_reference' => "test3 ref",
+#      'address' => "test3 address",
+#      'description' => "test3 description",
+#      'info_url' => "test3 info_url",
+#      'date_received' => @date_received,
+#      'date_scraped' => @date_scraped,
+#      'comment_url' => @comment_url,
+#    }
+#    store_non_duplicate record, 'council_reference'
+
+      contract = {
+        'vt_contract_number' => contract_data[:contract_number],
+        'vt_status_id' => contract_data[:contract_status],
+        'vt_title' => contract_data[:contract_title],
+        'vt_start_date' => contract_data[:contract_start],
+        'vt_end_date' => contract_data[:contract_end],
+        'vt_total_value' => contract_data[:contract_value],
+        'vt_department_id' => contract_data[:department_id],
+        'vt_contract_type_id' => contract_data[:contract_type],
+        'vt_value_type_id' => contract_data[:value_type_index],
+        'vt_unspc_id' => contract_data[:contract_unspsc],
+        'vt_contract_description' => contract_data[:contract_details],
+        'vt_supplier_id' => 0,
+        'vt_address_id' => 0,
+        'vt_agency_person' => contract_data[:agency_person],
+        'vt_agency_phone' => contract_data[:agency_phone],
+        'vt_agency_email' => contract_data[:agency_email],
+        'vt_supplier_name' => contract_data[:supplier_name],
+        'vt_supplier_abn' => contract_data[:supplier_abn],
+        'vt_supplier_acn' => contract_data[:supplier_acn],
+        'vt_supplier_address' => contract_data[:supplier_address],
+        'project_id' => contract_data[:vt_identifier]
+      }
+      store_non_duplicate contract, 'vt_contract_number'
   end
 
 

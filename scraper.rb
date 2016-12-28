@@ -6,16 +6,30 @@ Capybara.javascript_driver = :poltergeist
 @options = { js_errors: false, timeout: 1800, phantomjs_logger: StringIO.new, logger: nil, phantomjs_options: ['--load-images=no', '--ignore-ssl-errors=yes'] }
 @blacklist = ["https://maxcdn.bootstrapcdn.com/", "https://www.tenders.vic.gov.au/tenders/res/" ]
 
-Department = []
-def Department.where(x)
-  Department
+def store_non_duplicate record, id_field, table='data'
+  if (ScraperWiki.select("* from #{table} where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
+    puts "Storing #{record[id_field]} in #{table}"
+    ScraperWiki.save_sqlite(["#{id_field}"], record, table_name=table)
+  else
+    puts "Skipping already saved record #{record[id_field]}"
+  end
 end
-def Department.create(x)
-  return
+
+def check_store id_value, id_field, table='data'
+  if (ScraperWiki.select("* from #{table} where `#{id_field}`='#{id_value}'").empty? rescue true)
+    false
+  else
+    true
+  end
 end
-def Department.all()
-  Department
+
+def get_from_store id_value, id_field, table='data'
+  ScraperWiki.select("* from #{table} where `#{id_field}`='#{id_value}'")
 end
+
+
+
+
 ContractType = []
 def ContractType.where(x)
   ContractType
@@ -155,7 +169,7 @@ end
     post_code = find_between(text, "Postcode:", "Email Address:")
     supplier_address = "#{street}, #{suburb}, #{state} #{post_code}"
     supplier_email = find_between(text, "Email Address:", "State Government of Victoria")
-    { department_id: lookup_department_id(gov_entity, print),
+    { department_id: lookup_agency_id(gov_entity),
       contract_number: gov_entity_contract_numb,
       contract_title: contract_title,
       contract_type: lookup_contract_type(contract_type),
@@ -177,22 +191,7 @@ end
     }
   end
 
-  def store_non_duplicate record, id_field
-    if (ScraperWiki.select("* from data where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
-      puts "Storing #{record[id_field]}"
-      ScraperWiki.save_sqlite(["#{id_field}"], record)
-    else
-      puts "Skipping already saved record #{record[id_field]}"
-    end
 
-  end
-
-
-
-
-
-# # Read in a page
-# page = agent.get("http://foo.com")
 
 def prepare_session
   options = { js_errors: false, timeout: 1800, phantomjs_logger: StringIO.new, logger: nil, phantomjs_options: ['--load-images=no', '--ignore-ssl-errors=yes', '--ssl-protocol=any'] }
@@ -203,20 +202,11 @@ def prepare_session
   session
 end
 
-  def check_department_reference department_string, department_index
-    match = Department.where(vt_number: department_index).first
-    if !match
-      Department.all.each do |department| # fallback to string matching
-        if department_string.downcase.gsub(" ","").include? department.name.downcase.gsub(" ","")
-          if department.vt_number == 0 # dynamicaly add ref #
-            department.vt_number = department_index
-            department.save
-            puts ":: UPDATED DEPARTMENT REF: #{department.name} <== #{department_index}::"
-          end
-        end
-      end
-      puts "Dynamicaly creating '#{department_string}' with ref #{department_index}"
-      Department.create(name: department_string, short_name: "Ref-#{department_index}", vt_number: department_index)
+  def check_department_reference department_string, agency_index
+    is_present = check_store agency_index, "agency_index", table='data'
+    if not is_present
+      puts "Dynamicaly creating '#{department_string}' with ref #{agency_index}"
+      store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{department_string}"}), "agency_index", table='agencies'
     end
   end
 
@@ -224,29 +214,19 @@ end
     text[0..(text.index("(")-2)]
   end
 
-  def lookup_department_id department_text, print=false
-      Department.all.each do |department|
-        if department_text.downcase.gsub(" ","").include? department.name.downcase.gsub(" ","")
-          return department.vt_number
-        end
-      end
-      if print then puts "could not find agency '#{department_text}'" end
-      0
-  end
-
-  def lookup_department_short_name department_id
-    department = Department.where(vt_number: department_id).first
-    if department
-      department.short_name
-    else
-      ""
+  def lookup_agency_id department_text
+    matching_agency = get_from_store department_text, "agency_name", table='agencies'
+    if matching_agency
+      return matching_agency[0]["agency_name"]
     end
+    puts "could not find agency '#{department_text}'"
+    0
   end
 
-  def lookup_department_name department_id
-    department = Department.where(vt_number: department_id).first
-    if department
-      department.name
+  def lookup_agency_name department_id
+    matching_agency = get_from_store department_id, "agency_index", table='agencies'
+    if matching_agency
+      matching_agency.name
     else
       ""
     end
@@ -272,7 +252,6 @@ department_links.each do |department_link|
 end
 session.driver.quit
 
-#contract_indexes_to_scrape = scrape_contract_ids department_indexes_to_scrape
   contract_indexes_to_scrape = []
   department_indexes_to_scrape.each do |department_index|
     print "Agency: #{department_index}: "

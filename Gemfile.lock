@@ -65,10 +65,10 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  capybara (>= 2.1.0)
+  capybara
   mechanize
-  phantomjs (>= 2)
-  poltergeist (>= 1.9.0)
+  phantomjs
+  poltergeist
   scraperwiki!
 
 RUBY VERSION

@@ -11,7 +11,7 @@ gem "scraperwiki", git: "https://github.com/openaustralia/scraperwiki-ruby.git",
 gem "mechanize"
 
 # Javascript enabled scraping
-gem 'capybara', '>= 2.1.0'
-gem 'poltergeist', '>= 1.9.0'
-gem 'phantomjs', '>= 2'
+gem 'capybara'
+gem 'poltergeist'
+gem 'phantomjs'
 

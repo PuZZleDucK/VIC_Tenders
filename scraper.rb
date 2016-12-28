@@ -202,35 +202,36 @@ def prepare_session
   session
 end
 
-  def check_department_reference department_string, agency_index
-    is_present = check_store agency_index, "agency_index", table='data'
-    if not is_present
-      puts "Dynamicaly creating '#{department_string}' with ref #{agency_index}"
-      store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{department_string}"}), "agency_index", table='agencies'
-    end
+def check_agency_reference agency_string, agency_index
+  is_present = check_store agency_index, "agency_index", table='data'
+  if not is_present
+    puts "Dynamicaly creating '#{agency_string}' with ref #{agency_index}"
+    store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{agency_string}"}), "agency_index", table='agencies'
   end
+end
 
-  def clean_department_link_text text
-    text[0..(text.index("(")-2)]
-  end
+def clean_agency_link_text text
+  text[0..(text.index("(")-2)]
+end
 
-  def lookup_agency_id department_text
-    matching_agency = get_from_store department_text, "agency_name", table='agencies'
-    if matching_agency
-      return matching_agency[0]["agency_name"]
-    end
-    puts "could not find agency '#{department_text}'"
-    0
+def lookup_agency_id agency_text
+  matching_agency = get_from_store agency_text, "agency_name", table='agencies'
+  if matching_agency
+    return matching_agency[0]["agency_name"]
   end
+  puts "could not find agency name '#{agency_text}'"
+  0
+end
 
-  def lookup_agency_name department_id
-    matching_agency = get_from_store department_id, "agency_index", table='agencies'
-    if matching_agency
-      matching_agency.name
-    else
-      ""
-    end
+def lookup_agency_name agency_id
+  matching_agency = get_from_store agency_id, "agency_index", table='agencies'
+  if matching_agency
+    matching_agency.name
+  else
+    puts "could not find agency id '#{agency_id}'"
+    ""
   end
+end
 
 
 
@@ -243,11 +244,10 @@ department_indexes_to_scrape = []
 department_links = session.find_all "a#MSG2"
 department_links.each do |department_link|
   department_id = find_between department_link[:href], "issuingBusinessId=", "&"
-  department_string = clean_department_link_text department_link[:text]
-  check_department_reference department_string, department_id
+  department_string = clean_agency_link_text department_link[:text]
+  check_agency_reference department_string, department_id
   @saved_date = department_link[:href][-10..-1]
   department_indexes_to_scrape.push(department_id)
-  # puts "Department (#{department_id}) - #{department_link[:text]}"
   break if department_link.text.include?("Department of Education and Training") # Stop after third dep DEBUG
 end
 session.driver.quit
@@ -264,7 +264,7 @@ session.driver.quit
       department_url = "https://www.tenders.vic.gov.au/tenders/contract/list.do?showSearch=false&action=contract-search-submit&issuingBusinessId=#{department_index}&issuingBusinessIdForSort=#{department_index}&pageNum=#{page_number}&awardDateFromString=#{@saved_date}"
       department_session.visit department_url
       contract_links = department_session.find_all "a#MSG2"
-      print "\n   § #{page_number}: "
+      print "\n   Page #{page_number}: "
       contract_links.each do |contract_link|
         vt_reference = contract_link["href"].to_s[59..63]
         print "."
@@ -284,7 +284,7 @@ session.driver.quit
 
 
 
-puts "🖻: #{contract_indexes_to_scrape}"
+puts "cotract indexes: #{contract_indexes_to_scrape}"
 
 contract_session = prepare_session()
 Capybara.reset_sessions!
@@ -317,9 +317,3 @@ end
 contract_session.driver.quit
 print "\n ∴ Completed Scraping @ #{Time.now} ∴\n"
 
-
-
-
-# All that matters is that your final data is written to an SQLite database
-# called "data.sqlite" in the current working directory which has at least a table
-# called "data".

@@ -3,10 +3,10 @@ require 'capybara/poltergeist'
 
 def store_non_duplicate record, id_field, table='data'
   if (ScraperWiki.select("* from #{table} where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
-    puts "   Storing record"
+    puts "    Storing record"
     ScraperWiki.save_sqlite(["#{id_field}"], record, table_name=table)
   else
-    puts "   Skipping already saved #{table} record #{record[id_field]}"
+    puts "    Skipping already saved #{table} record #{record[id_field]}"
   end
 end
 
@@ -179,7 +179,7 @@ department_links.each do |department_link|
   check_agency_reference department_string, agency_id
   @saved_date = department_link[:href][-10..-1]
   department_indexes_to_scrape.push(agency_id)
-  break if department_link.text.include?("Court Services Victoria") # Stop after DEP DEBUG
+#  break if department_link.text.include?("Court Services Victoria") # Stop after DEP DEBUG
 end
 
 contract_indexes_to_scrape = []
@@ -199,7 +199,7 @@ department_indexes_to_scrape.each do |department_index|
       vt_reference = contract_link["href"].to_s[59..63]
       print "."
       contract_indexes_to_scrape.push vt_reference
-      break # stop after first contract DEBUG
+#      break # stop after first contract DEBUG
     end
     current_page = session.text
     page_number += 1
@@ -236,8 +236,6 @@ def contract_updated(last_revision, contract_data)
   if last_revision.nil? || last_revision == {"ocds_contract_id" => "ocds_contract_id-0"}
     true
   else
-    puts "   last_revision: #{last_revision["vt_start_date"]}"
-    puts "   contract_data: #{contract_data[:contract_start]}"
     if not last_revision["vt_agency"] == contract_data[:agency]
       true
     elsif not last_revision["vt_status"] == contract_data[:contract_status]
@@ -245,10 +243,8 @@ def contract_updated(last_revision, contract_data)
     elsif not last_revision["vt_title"] == contract_data[:contract_title]
       true
     elsif not Date.parse(last_revision["vt_start_date"]) == contract_data[:contract_start]
-      puts "--start"
       true
     elsif not Date.parse(last_revision["vt_end_date"]) == contract_data[:contract_end]
-      puts "--end updated"
       true
     elsif not last_revision["vt_total_value"] == contract_data[:contract_value]
       true
@@ -275,7 +271,6 @@ def contract_updated(last_revision, contract_data)
     elsif not last_revision["vt_supplier_address"] == contract_data[:supplier_address]
       true
     elsif not last_revision["vt_info_link"] == "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_data[:vt_identifier]}"
-      puts "--vt_identifier"
       true
     elsif not last_revision["vt_associated_tender"] == contract_data[:associated_tender]
       true
@@ -290,7 +285,6 @@ def get_revision_number(contract_data)
   matching_contracts = find_partial_ocds_matches partial_ocds_id
   last_revision = get_latest_revision(matching_contracts)
   if contract_updated(last_revision, contract_data)
-#    puts "   matching_contracts: #{matching_contracts}"
     if matching_contracts.nil?
       "1"
     else
@@ -333,7 +327,7 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
   }
   puts ":: Processing: #{contract['ocds_contract_id']}"
   store_non_duplicate contract, 'ocds_contract_id' unless revision == ""
-  puts "   Skipping already saved record" unless not revision == ""
+  puts "    Skipping already saved record" unless not revision == ""
 end
 session.driver.quit
 puts ":: Completed Scraping @ #{Time.now} ::\n"

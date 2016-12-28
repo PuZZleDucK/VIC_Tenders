@@ -297,8 +297,8 @@ def get_revision_number(contract_data)
 end
 
 session = prepare_session()
-Capybara.reset_sessions!
 contract_indexes_to_scrape.to_set.each do |contract_index|
+  Capybara.reset_sessions!
   session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
   contract_data = extract_contract_data session.text, contract_index
   revision = get_revision_number contract_data 

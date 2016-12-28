@@ -8,10 +8,10 @@ Capybara.javascript_driver = :poltergeist
 
 def store_non_duplicate record, id_field, table='data'
   if (ScraperWiki.select("* from #{table} where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
-    puts "Storing #{record[id_field]} in #{table}"
+    puts "   Storing #{record[id_field]} in #{table}"
     ScraperWiki.save_sqlite(["#{id_field}"], record, table_name=table)
   else
-    puts "Skipping already saved record #{record[id_field]}"
+    puts "   Skipping already saved #{table} record #{record[id_field]}"
   end
 end
 
@@ -32,12 +32,15 @@ def find_between(text, pre_string, post_string, print=true)
   if matches && matches.length > 1
     matches[1].strip
   else
-    puts "Match failed!"
+    if print then puts "Match failed!" end
     if print then puts "nothing between '#{pre_string}' & '#{post_string}' in '#{text}'" end
     ""
   end
 end
 
+def sanitize_contract_number text
+  return text.gsub(" ","-").gsub("	","-").gsub("_","-")
+end
 
 def extract_contract_data text, contract_index
   value_string = find_between(text, "Total Value of the Contract:","Start Date:")
@@ -53,12 +56,14 @@ def extract_contract_data text, contract_index
   rescue
     contract_end = Date.parse("11/10/1900")
   end
-  begin
+  if text.include? "UNSPSC :"
     contract_unspsc = find_between(text, "UNSPSC :", "Description")
-  rescue
+    contract_status = find_between(text, "Status:", "UNSPSC :")
+  else
     contract_unspsc = find_between(text, "UNSPSC 1:", "Description")
     contract_unspsc += ", "
     contract_unspsc += find_between(text, "UNSPSC 2:", "Description")
+    contract_status = find_between(text, "Status:", "UNSPSC 1:")
   end
   agency_chunk = find_between(text, "Agency Contact Details", "Supplier Information")
   agency_chunk += "Supplier Information"
@@ -86,16 +91,18 @@ def extract_contract_data text, contract_index
   post_code = find_between(text, "Postcode:", "Email Address:")
   supplier_address = "#{street}, #{suburb}, #{state} #{post_code}"
   supplier_email = find_between(text, "Email Address:", "State Government of Victoria")
-
-  { department_id: lookup_agency_id(find_between(text, "Public Body:", "Contract Number:")),
-    contract_number: find_between(text, "Contract Number:","Title:"),
+  agency = find_between(text, "Public Body:", "Contract Number:")
+  contract_id = find_between(text, "Contract Number:","Title:")
+  { ocds_contract_id: "ocds-k4r8nn_contract_agent-#{lookup_agency_id(agency)}_con-#{sanitize_contract_number(contract_id)}_#{contract_start}",
+    agency: agency,
+    contract_number: contract_id,
     contract_title: find_between(text, "Title:","Type of Contract:"),
     contract_type: find_between(text, "Type of Contract:","Total Value of the Contract:"),
     contract_value: contract_value,
     value_type_index: value_string,
     contract_start: contract_start,
     contract_end: contract_end,
-    contract_status: find_between(text, "Status:", "UNSPSC :"),
+    contract_status: contract_status,
     contract_unspsc: contract_unspsc,
     contract_details: find_between(text, "Description", "Agency Contact Details"),
     supplier_name: supplier_name,
@@ -123,21 +130,27 @@ end
 def check_agency_reference agency_string, agency_index
   is_present = check_store agency_index, "agency_index", table='data'
   if not is_present
-    puts "Checking '#{agency_string}' with ref #{agency_index}"
+#    puts "Checking '#{agency_string}' with ref #{agency_index}"
     store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{agency_string}"}), "agency_index", table='agencies'
   end
 end
 
 def clean_agency_link_text text
-  text[0..(text.index("(")-2)]
+  if text.include? "("
+    text[0..(text.index("(")-2)]
+  else
+    text
+  end
 end
 
 def lookup_agency_id agency_text
-  matching_agency = get_from_store agency_text, "agency_name", table='agencies'
+  puts "lookup #{agency_text}"
+  matching_agency = get_from_store clean_agency_link_text(agency_text), "agency_name", table='agencies'
+  puts "   matching #{matching_agency}"
   if matching_agency
-    return matching_agency[0]["agency_name"]
+    return matching_agency[0]["agency_index"]
   end
-  puts "could not find agency name '#{agency_text}'"
+  puts "could not find agency id for '#{agency_text}'"
   0
 end
 
@@ -146,7 +159,7 @@ def lookup_agency_name agency_id
   if matching_agency
     matching_agency[0]["agency_name"]
   else
-    puts "could not find agency id '#{agency_id}'"
+    puts "could not find agency name '#{agency_id}'"
     ""
   end
 end
@@ -161,12 +174,12 @@ session.visit "https://www.tenders.vic.gov.au/tenders/contract/list.do?action=co
 department_indexes_to_scrape = []
 department_links = session.find_all "a#MSG2"
 department_links.each do |department_link|
-  department_id = find_between department_link[:href], "issuingBusinessId=", "&"
+  agency_id = find_between department_link[:href], "issuingBusinessId=", "&"
   department_string = clean_agency_link_text department_link[:text]
-  check_agency_reference department_string, department_id
+  check_agency_reference department_string, agency_id
   @saved_date = department_link[:href][-10..-1]
-  department_indexes_to_scrape.push(department_id)
-  break if department_link.text.include?("Department of Education and Training") # Stop after third dep DEBUG
+  department_indexes_to_scrape.push(agency_id)
+#  break if department_link.text.include?("Department of Education and Training") # Stop after DET DEBUG
 end
 session.driver.quit
 
@@ -197,7 +210,7 @@ department_indexes_to_scrape.each do |department_index|
 end
 
 
-
+contract_indexes_to_scrape.uniq!
 
 puts "cotract indexes: #{contract_indexes_to_scrape}"
 
@@ -207,13 +220,14 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
   contract_session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
   contract_data = extract_contract_data contract_session.text, contract_index
   contract = {
+      'ocds_contract_id' => contract_data[:ocds_contract_id],
       'vt_contract_number' => contract_data[:contract_number],
       'vt_status_id' => contract_data[:contract_status],
       'vt_title' => contract_data[:contract_title],
       'vt_start_date' => contract_data[:contract_start],
       'vt_end_date' => contract_data[:contract_end],
       'vt_total_value' => contract_data[:contract_value],
-      'vt_department_id' => contract_data[:department_id],
+      'vt_agency_id' => contract_data[:agency_id],
       'vt_contract_type_id' => contract_data[:contract_type],
       'vt_value_type_id' => contract_data[:value_type_index],
       'vt_unspc_id' => contract_data[:contract_unspsc],
@@ -225,9 +239,10 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
       'vt_supplier_abn' => contract_data[:supplier_abn],
       'vt_supplier_acn' => contract_data[:supplier_acn],
       'vt_supplier_address' => contract_data[:supplier_address],
-      'project_id' => contract_data[:vt_identifier]
+      'vt_identifier' => contract_data[:vt_identifier]
   }
-  store_non_duplicate contract, 'vt_contract_number'
+  puts "Uniq: #{contract['ocds_contract_id']}"
+  store_non_duplicate contract, 'ocds_contract_id'
 end
 contract_session.driver.quit
 puts ":: Completed Scraping @ #{Time.now} ::\n"

@@ -177,39 +177,9 @@ end
     }
   end
 
-  def store_this_contract? contract_data, display=true
-      true
-  end
-
-  def update_this_contract contract_data
-    existing_contract = Contract.find_by(vt_contract_number: contract_data[:contract_number])
-    if not existing_contract.nil?
-      existing_contract.vt_status_id = contract_data[:contract_status]
-      existing_contract.vt_title = contract_data[:contract_title]
-      existing_contract.vt_start_date = contract_data[:contract_start]
-      existing_contract.vt_end_date = contract_data[:contract_end]
-      existing_contract.vt_total_value = contract_data[:contract_value]
-      existing_contract.vt_contract_type_id = contract_data[:contract_type]
-      existing_contract.vt_value_type_id = contract_data[:value_type_index]
-      existing_contract.vt_unspc_id = contract_data[:contract_unspsc]
-      existing_contract.vt_contract_description = contract_data[:contract_details]
-      existing_contract.vt_supplier_id = 0
-      existing_contract.vt_address_id = 0
-      existing_contract.vt_agency_person = contract_data[:agency_person]
-      existing_contract.vt_agency_phone = contract_data[:agency_phone]
-      existing_contract.vt_agency_email = contract_data[:agency_email]
-      existing_contract.vt_supplier_name = contract_data[:supplier_name]
-      existing_contract.vt_supplier_abn = contract_data[:supplier_abn]
-      existing_contract.vt_supplier_acn = contract_data[:supplier_acn]
-      existing_contract.vt_supplier_address = contract_data[:supplier_address]
-      existing_contract.project_id = contract_data[:vt_identifier]
-    end
-  end
-
   def store_non_duplicate record, id_field
     if (ScraperWiki.select("* from data where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
       puts "Storing #{record[id_field]}"
-  #    puts record
       ScraperWiki.save_sqlite(["#{id_field}"], record)
     else
       puts "Skipping already saved record #{record[id_field]}"
@@ -218,43 +188,6 @@ end
   end
 
 
-  def store_or_skip contract_data, refresh = false
-#    record = {
-#      'council_reference' => "test3 ref",
-#      'address' => "test3 address",
-#      'description' => "test3 description",
-#      'info_url' => "test3 info_url",
-#      'date_received' => @date_received,
-#      'date_scraped' => @date_scraped,
-#      'comment_url' => @comment_url,
-#    }
-#    store_non_duplicate record, 'council_reference'
-
-      contract = {
-        'vt_contract_number' => contract_data[:contract_number],
-        'vt_status_id' => contract_data[:contract_status],
-        'vt_title' => contract_data[:contract_title],
-        'vt_start_date' => contract_data[:contract_start],
-        'vt_end_date' => contract_data[:contract_end],
-        'vt_total_value' => contract_data[:contract_value],
-        'vt_department_id' => contract_data[:department_id],
-        'vt_contract_type_id' => contract_data[:contract_type],
-        'vt_value_type_id' => contract_data[:value_type_index],
-        'vt_unspc_id' => contract_data[:contract_unspsc],
-        'vt_contract_description' => contract_data[:contract_details],
-        'vt_supplier_id' => 0,
-        'vt_address_id' => 0,
-        'vt_agency_person' => contract_data[:agency_person],
-        'vt_agency_phone' => contract_data[:agency_phone],
-        'vt_agency_email' => contract_data[:agency_email],
-        'vt_supplier_name' => contract_data[:supplier_name],
-        'vt_supplier_abn' => contract_data[:supplier_abn],
-        'vt_supplier_acn' => contract_data[:supplier_acn],
-        'vt_supplier_address' => contract_data[:supplier_address],
-        'project_id' => contract_data[:vt_identifier]
-      }
-      store_non_duplicate contract, 'vt_contract_number'
-  end
 
 
 
@@ -268,35 +201,6 @@ def prepare_session
   session.driver.browser.js_errors = false
   session.driver.timeout = 1800
   session
-end
-
-def scrape_contract_ids department_indexes_to_scrape
-  contract_indexes = []
-  department_indexes_to_scrape.each do |department_index|
-    print "Agency: #{department_index}: "
-    page_number = 1
-    previous_page = ""
-    current_page = "not blank"
-    while previous_page != current_page
-      previous_page = current_page
-      department_session = prepare_session
-      department_url = "https://www.tenders.vic.gov.au/tenders/contract/list.do?showSearch=false&action=contract-search-submit&issuingBusinessId=#{department_index}&issuingBusinessIdForSort=#{department_index}&pageNum=#{page_number}&awardDateFromString=#{@saved_date}"
-      department_session.visit department_url
-      contract_links = department_session.find_all "a#MSG2"
-      print "\n   § #{page_number}: "
-      contract_links.each do |contract_link|
-        vt_reference = contract_link["href"].to_s[59..63]
-        print "."
-        contract_indexes.push vt_reference
-          # break # stop after first contract DEBUG
-      end
-      current_page = department_session.text
-      department_session.driver.quit
-      page_number += 1
-    end
-    print "\n"
-  end
-  contract_indexes
 end
 
   def check_department_reference department_string, department_index
@@ -348,56 +252,95 @@ end
     end
   end
 
-def scrape_department_ids department_list_url
-  session = prepare_session
-  session.visit department_list_url
-  department_indexes_to_scrape = []
-  department_links = session.find_all "a#MSG2"
-  department_links.each do |department_link|
-    department_id = find_between department_link[:href], "issuingBusinessId=", "&"
-    department_string = clean_department_link_text department_link[:text]
-    check_department_reference department_string, department_id
-    @saved_date = department_link[:href][-10..-1]
-    department_indexes_to_scrape.push(department_id)
-    # puts "Department (#{department_id}) - #{department_link[:text]}"
-    break if department_link.text.include?("Department of Education and Training") # Stop after third dep DEBUG
+
+
+
+print "\n ∵ TendersVIC Scrape @ #{Time.now} ∵\n"
+
+session = prepare_session
+session.visit "https://www.tenders.vic.gov.au/tenders/contract/list.do?action=contract-view"
+department_indexes_to_scrape = []
+department_links = session.find_all "a#MSG2"
+department_links.each do |department_link|
+  department_id = find_between department_link[:href], "issuingBusinessId=", "&"
+  department_string = clean_department_link_text department_link[:text]
+  check_department_reference department_string, department_id
+  @saved_date = department_link[:href][-10..-1]
+  department_indexes_to_scrape.push(department_id)
+  # puts "Department (#{department_id}) - #{department_link[:text]}"
+  break if department_link.text.include?("Department of Education and Training") # Stop after third dep DEBUG
+end
+session.driver.quit
+
+#contract_indexes_to_scrape = scrape_contract_ids department_indexes_to_scrape
+  contract_indexes_to_scrape = []
+  department_indexes_to_scrape.each do |department_index|
+    print "Agency: #{department_index}: "
+    page_number = 1
+    previous_page = ""
+    current_page = "not blank"
+    while previous_page != current_page
+      previous_page = current_page
+      department_session = prepare_session
+      department_url = "https://www.tenders.vic.gov.au/tenders/contract/list.do?showSearch=false&action=contract-search-submit&issuingBusinessId=#{department_index}&issuingBusinessIdForSort=#{department_index}&pageNum=#{page_number}&awardDateFromString=#{@saved_date}"
+      department_session.visit department_url
+      contract_links = department_session.find_all "a#MSG2"
+      print "\n   § #{page_number}: "
+      contract_links.each do |contract_link|
+        vt_reference = contract_link["href"].to_s[59..63]
+        print "."
+        contract_indexes_to_scrape.push vt_reference
+          # break # stop after first contract DEBUG
+      end
+      current_page = department_session.text
+      department_session.driver.quit
+      page_number += 1
+    end
+    print "\n"
   end
-  session.driver.quit
-  department_indexes_to_scrape
+
+
+
+
+
+
+
+puts "🖻: #{contract_indexes_to_scrape}"
+
+contract_session = prepare_session()
+Capybara.reset_sessions!
+contract_indexes_to_scrape.to_set.each do |contract_index|
+  contract_session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
+  contract_data = extract_contract_data(contract_session.text, contract_index, print)
+  contract = {
+      'vt_contract_number' => contract_data[:contract_number],
+      'vt_status_id' => contract_data[:contract_status],
+      'vt_title' => contract_data[:contract_title],
+      'vt_start_date' => contract_data[:contract_start],
+      'vt_end_date' => contract_data[:contract_end],
+      'vt_total_value' => contract_data[:contract_value],
+      'vt_department_id' => contract_data[:department_id],
+      'vt_contract_type_id' => contract_data[:contract_type],
+      'vt_value_type_id' => contract_data[:value_type_index],
+      'vt_unspc_id' => contract_data[:contract_unspsc],
+      'vt_contract_description' => contract_data[:contract_details],
+      'vt_agency_person' => contract_data[:agency_person],
+      'vt_agency_phone' => contract_data[:agency_phone],
+      'vt_agency_email' => contract_data[:agency_email],
+      'vt_supplier_name' => contract_data[:supplier_name],
+      'vt_supplier_abn' => contract_data[:supplier_abn],
+      'vt_supplier_acn' => contract_data[:supplier_acn],
+      'vt_supplier_address' => contract_data[:supplier_address],
+      'project_id' => contract_data[:vt_identifier]
+  }
+  store_non_duplicate contract, 'vt_contract_number'
 end
-
-def scrape_for_references department_list_url
-  department_indexes_to_scrape = scrape_department_ids department_list_url
-  contract_indexes = scrape_contract_ids department_indexes_to_scrape
-  puts "🖻: #{contract_indexes}"
-  contract_indexes
-end
-
-def scrape_tenders_vic refresh=false, print=true
-  print "\n ∵ TendersVIC Scrape @ #{Time.now} ∵\n"
-  contract_indexes_to_scrape = scrape_for_references("https://www.tenders.vic.gov.au/tenders/contract/list.do?action=contract-view")
-  contract_session = prepare_session()
-  Capybara.reset_sessions!
-  contract_indexes_to_scrape.to_set.each do |contract_index|
-    contract_session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
-    contract_data = extract_contract_data(contract_session.text, contract_index, print)
-    store_or_skip(contract_data, refresh)
-  end
-  contract_session.driver.quit
-  print "\n ∴ Completed Scraping @ #{Time.now} ∴\n"
-end
-
-scrape_tenders_vic
+contract_session.driver.quit
+print "\n ∴ Completed Scraping @ #{Time.now} ∴\n"
 
 
 
 
-# # Find somehing on the page using css selectors
-# p page.at('div.content')
-#
-
-# You don't have to do things with the Mechanize or ScraperWiki libraries.
-# You can use whatever gems you want: https://morph.io/documentation/ruby
 # All that matters is that your final data is written to an SQLite database
 # called "data.sqlite" in the current working directory which has at least a table
 # called "data".

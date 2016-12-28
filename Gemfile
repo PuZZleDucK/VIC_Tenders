@@ -13,5 +13,5 @@ gem "mechanize"
 # Javascript enabled scraping
 gem 'capybara', '>= 2.1.0'
 gem 'poltergeist', '>= 1.9.0'
-gem 'phantomjs', '>= 2.1.1'
+gem 'phantomjs', '>= 2'
 

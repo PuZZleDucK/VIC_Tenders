@@ -39,7 +39,7 @@ end
 
 def extract_contract_data text, contract_index
   value_string = find_between(text, "Total Value of the Contract:","Start Date:")
-  value_type = find_between(value_string,"(",")")
+  value_type = find_between(value_string,"\\(","\\)") # something not right
   contract_value = (value_string.gsub(",","").gsub("$","").to_f).to_i
   begin
     contract_start = Date.parse(find_between(text, "Start Date:","Expiry Date:"))
@@ -94,7 +94,7 @@ def extract_contract_data text, contract_index
   agency = find_between(text, "Public Body:", "Contract Number:")
   contract_id = find_between(text, "Contract Number:","Title:")
   { ocds_contract_id: "ocds-k4r8nn_agent-#{lookup_agency_id(agency)}_con-#{sanitize_contract_number(contract_id)}",
-    agency_id: clean_agency_link_text(agency),
+    agency: clean_agency_link_text(agency),
     contract_number: contract_id,
     contract_title: find_between(text, "Title:","Type of Contract:").gsub(";",", "),
     contract_type: find_between(text, "Type of Contract:","Total Value of the Contract:"),
@@ -131,7 +131,6 @@ end
 def check_agency_reference agency_string, agency_index
   is_present = check_store agency_index, "agency_index", table='data'
   if not is_present
-#    puts "Checking '#{agency_string}' with ref #{agency_index}"
     store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{agency_string}"}), "agency_index", table='agencies'
   end
 end
@@ -146,7 +145,6 @@ end
 
 def lookup_agency_id agency_text
   matching_agency = get_from_store clean_agency_link_text(agency_text), "agency_name", table='agencies'
-#  puts "   matching #{matching_agency}"
   if matching_agency
     return matching_agency[0]["agency_index"]
   end
@@ -181,9 +179,8 @@ department_links.each do |department_link|
   check_agency_reference department_string, agency_id
   @saved_date = department_link[:href][-10..-1]
   department_indexes_to_scrape.push(agency_id)
-#  break if department_link.text.include?("Court Services Victoria") # Stop after DEP DEBUG
+  break if department_link.text.include?("Court Services Victoria") # Stop after DEP DEBUG
 end
-session.driver.quit
 
 contract_indexes_to_scrape = []
 department_indexes_to_scrape.each do |department_index|
@@ -193,19 +190,18 @@ department_indexes_to_scrape.each do |department_index|
   current_page = "not blank"
   while previous_page != current_page
     previous_page = current_page
-    department_session = prepare_session
+    session = prepare_session
     department_url = "https://www.tenders.vic.gov.au/tenders/contract/list.do?showSearch=false&action=contract-search-submit&issuingBusinessId=#{department_index}&issuingBusinessIdForSort=#{department_index}&pageNum=#{page_number}&awardDateFromString=#{@saved_date}"
-    department_session.visit department_url
-    contract_links = department_session.find_all "a#MSG2"
+    session.visit department_url
+    contract_links = session.find_all "a#MSG2"
     print "\n   Page #{page_number}: "
     contract_links.each do |contract_link|
       vt_reference = contract_link["href"].to_s[59..63]
       print "."
       contract_indexes_to_scrape.push vt_reference
-#      break # stop after first contract DEBUG
+      break # stop after first contract DEBUG
     end
-    current_page = department_session.text
-    department_session.driver.quit
+    current_page = session.text
     page_number += 1
   end
   print "\n"
@@ -219,7 +215,6 @@ def find_partial_ocds_matches(partial_ocds_id)
     partial_matches = ScraperWiki.select("* from data where `ocds_contract_id` LIKE '#{partial_ocds_id}%'")
   rescue
   end
-#  puts "partial_matches: #{partial_matches}"
   partial_matches
 end
 
@@ -233,7 +228,6 @@ def get_latest_revision(matching_contracts)
         max = contract
       end
     end
-#    puts "max: #{max}"
     max
   end
 end
@@ -242,7 +236,52 @@ def contract_updated(last_revision, contract_data)
   if last_revision.nil? || last_revision == {"ocds_contract_id" => "ocds_contract_id-0"}
     true
   else
-    false
+    puts "   last_revision: #{last_revision["vt_start_date"]}"
+    puts "   contract_data: #{contract_data[:contract_start]}"
+    if not last_revision["vt_agency"] == contract_data[:agency]
+      true
+    elsif not last_revision["vt_status"] == contract_data[:contract_status]
+      true
+    elsif not last_revision["vt_title"] == contract_data[:contract_title]
+      true
+    elsif not Date.parse(last_revision["vt_start_date"]) == contract_data[:contract_start]
+      puts "--start"
+      true
+    elsif not Date.parse(last_revision["vt_end_date"]) == contract_data[:contract_end]
+      puts "--end updated"
+      true
+    elsif not last_revision["vt_total_value"] == contract_data[:contract_value]
+      true
+    elsif not last_revision["vt_contract_type"] == contract_data[:contract_type]
+      true
+    elsif not last_revision["vt_value_type"] == contract_data[:value_type]
+      true
+    elsif not last_revision["vt_unspc"] == contract_data[:contract_unspsc]
+      true
+    elsif not last_revision["vt_contract_description"] == contract_data[:contract_details]
+      true
+    elsif not last_revision["vt_agency_person"] == contract_data[:agency_person]
+      true
+    elsif not last_revision["vt_agency_phone"] == contract_data[:agency_phone]
+      true
+    elsif not last_revision["vt_agency_email"] == contract_data[:agency_email]
+      true
+    elsif not last_revision["vt_supplier_name"] == contract_data[:supplier_name]
+      true
+    elsif not last_revision["vt_supplier_abn"] == contract_data[:supplier_abn]
+      true
+    elsif not last_revision["vt_supplier_acn"] == contract_data[:supplier_acn]
+      true
+    elsif not last_revision["vt_supplier_address"] == contract_data[:supplier_address]
+      true
+    elsif not last_revision["vt_info_link"] == "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_data[:vt_identifier]}"
+      puts "--vt_identifier"
+      true
+    elsif not last_revision["vt_associated_tender"] == contract_data[:associated_tender]
+      true
+    else
+      false
+    end
   end
 end
 
@@ -251,6 +290,7 @@ def get_revision_number(contract_data)
   matching_contracts = find_partial_ocds_matches partial_ocds_id
   last_revision = get_latest_revision(matching_contracts)
   if contract_updated(last_revision, contract_data)
+#    puts "   matching_contracts: #{matching_contracts}"
     if matching_contracts.nil?
       "1"
     else
@@ -262,11 +302,11 @@ def get_revision_number(contract_data)
   end
 end
 
-contract_session = prepare_session()
+session = prepare_session()
 Capybara.reset_sessions!
 contract_indexes_to_scrape.to_set.each do |contract_index|
-  contract_session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
-  contract_data = extract_contract_data contract_session.text, contract_index
+  session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
+  contract_data = extract_contract_data session.text, contract_index
   revision = get_revision_number contract_data 
   contract = {
     'ocds_contract_id' => "#{contract_data[:ocds_contract_id]}_rev-#{revision}",
@@ -276,7 +316,7 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
     'vt_start_date' => contract_data[:contract_start],
     'vt_end_date' => contract_data[:contract_end],
     'vt_total_value' => contract_data[:contract_value],
-    'vt_agency' => contract_data[:agency_id],
+    'vt_agency' => contract_data[:agency],
     'vt_contract_type' => contract_data[:contract_type],
     'vt_value_type' => contract_data[:value_type],
     'vt_unspc' => contract_data[:contract_unspsc],
@@ -291,10 +331,10 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
     'vt_supplier_address' => contract_data[:supplier_address],
     'vt_info_link' => "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_data[:vt_identifier]}"
   }
-  puts ":: Processing: #{contract['ocds_contract_id']}_rev-#{revision}"
+  puts ":: Processing: #{contract['ocds_contract_id']}"
   store_non_duplicate contract, 'ocds_contract_id' unless revision == ""
   puts "   Skipping already saved record" unless not revision == ""
 end
-contract_session.driver.quit
+session.driver.quit
 puts ":: Completed Scraping @ #{Time.now} ::\n"
 

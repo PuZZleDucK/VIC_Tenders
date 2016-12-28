@@ -194,7 +194,7 @@ department_indexes_to_scrape.each do |department_index|
     department_url = "https://www.tenders.vic.gov.au/tenders/contract/list.do?showSearch=false&action=contract-search-submit&issuingBusinessId=#{department_index}&issuingBusinessIdForSort=#{department_index}&pageNum=#{page_number}&awardDateFromString=#{@saved_date}"
     session.visit department_url
     contract_links = session.find_all "a#MSG2"
-    print "\n   Page #{page_number}: "
+    print "\n    Page #{page_number}: "
     contract_links.each do |contract_link|
       vt_reference = contract_link["href"].to_s[59..63]
       print "."

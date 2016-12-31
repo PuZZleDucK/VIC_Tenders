@@ -3,10 +3,8 @@ require 'capybara/poltergeist'
 
 def store_non_duplicate record, id_field, table='data'
   if (ScraperWiki.select("* from #{table} where `#{id_field}`='#{record[id_field]}'").empty? rescue true)
-    puts "    Storing record"
+    puts "Storing record #{record[id_field]}"
     ScraperWiki.save_sqlite(["#{id_field}"], record, table_name=table)
-  else
-    puts "    Skipping already saved #{table} record #{record[id_field]}"
   end
 end
 
@@ -119,8 +117,9 @@ end
 
 
 
-def prepare_session
+def prepare_session(session)
   options = { js_errors: false, timeout: 1800, phantomjs_logger: StringIO.new, logger: nil, phantomjs_options: ['--load-images=no', '--ignore-ssl-errors=yes', '--ssl-protocol=any'] }
+  session.driver.quit
   session = Capybara::Session.new(:poltergeist, options)
   session.driver.browser.url_blacklist = ["https://maxcdn.bootstrapcdn.com/", "https://www.tenders.vic.gov.au/tenders/res/"]
   session.driver.browser.js_errors = false
@@ -169,7 +168,8 @@ Capybara.javascript_driver = :poltergeist
 @options = { js_errors: false, timeout: 1800, phantomjs_logger: StringIO.new, logger: nil, phantomjs_options: ['--load-images=no', '--ignore-ssl-errors=yes'] }
 @blacklist = ["https://maxcdn.bootstrapcdn.com/", "https://www.tenders.vic.gov.au/tenders/res/" ]
 
-session = prepare_session
+session = Capybara::Session.new(:poltergeist)
+session = prepare_session session
 session.visit "https://www.tenders.vic.gov.au/tenders/contract/list.do?action=contract-view"
 department_indexes_to_scrape = []
 department_links = session.find_all "a#MSG2"
@@ -190,11 +190,11 @@ department_indexes_to_scrape.each do |department_index|
   current_page = "not blank"
   while previous_page != current_page
     previous_page = current_page
-    session = prepare_session
+    session = prepare_session session
     department_url = "https://www.tenders.vic.gov.au/tenders/contract/list.do?showSearch=false&action=contract-search-submit&issuingBusinessId=#{department_index}&issuingBusinessIdForSort=#{department_index}&pageNum=#{page_number}&awardDateFromString=#{@saved_date}"
     session.visit department_url
     contract_links = session.find_all "a#MSG2"
-    print "\n    Page #{page_number}: "
+    print " Page #{page_number}:"
     contract_links.each do |contract_link|
       vt_reference = contract_link["href"].to_s[59..63]
       print "."
@@ -208,7 +208,6 @@ department_indexes_to_scrape.each do |department_index|
 end
 
 contract_indexes_to_scrape.uniq!
-puts "cotract indexes: #{contract_indexes_to_scrape}"
 
 def find_partial_ocds_matches(partial_ocds_id)
   begin
@@ -325,9 +324,8 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
     'vt_supplier_address' => contract_data[:supplier_address],
     'vt_info_link' => "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_data[:vt_identifier]}"
   }
-  puts ":: Processing: #{contract['ocds_contract_id']}"
   store_non_duplicate contract, 'ocds_contract_id' unless revision == ""
-  puts "    Skipping already saved record" unless not revision == ""
+  puts "Skipping record #{contract['ocds_contract_id']}" unless not revision == ""
 end
 session.driver.quit
 puts ":: Completed Scraping @ #{Time.now} ::\n"

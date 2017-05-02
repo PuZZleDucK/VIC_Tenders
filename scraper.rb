@@ -130,7 +130,7 @@ end
 def check_agency_reference agency_string, agency_index
   is_present = check_store agency_index, "agency_index", table='data'
   if not is_present
-    store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{agency_string}"}), "agency_index", table='agencies'
+    store_non_duplicate ({"agency_index" => "#{agency_index}", "agency_name" => "#{agency_string.gsub("'","")}"}), "agency_index", table='agencies'
   end
 end
 
@@ -144,7 +144,7 @@ end
 
 def lookup_agency_id agency_text
   matching_agency = get_from_store clean_agency_link_text(agency_text), "agency_name", table='agencies'
-  if matching_agency
+  if matching_agency[0]
     return matching_agency[0]["agency_index"]
   end
   puts "could not find agency id for '#{agency_text}'"
@@ -161,6 +161,13 @@ def lookup_agency_name agency_id
   end
 end
 
+def fix_ag_dep_db
+  matching_agency = get_from_store 5979, "agency_index", table='agencies'
+  if matching_agency[0]["agency_name"].include?("'")
+    puts "Removing apostrophe from DB"
+    ScraperWiki.sqliteexecute("delete from agencies where agency_name LIKE 'Victorian Auditor General%'")
+  end
+end
 
 
 puts ":: TendersVIC Scrape @ #{Time.now} ::"
@@ -168,6 +175,7 @@ Capybara.javascript_driver = :poltergeist
 @options = { js_errors: false, timeout: 1800, phantomjs_logger: StringIO.new, logger: nil, phantomjs_options: ['--load-images=no', '--ignore-ssl-errors=yes'] }
 @blacklist = ["https://maxcdn.bootstrapcdn.com/", "https://www.tenders.vic.gov.au/tenders/res/" ]
 
+fix_ag_dep_db
 session = Capybara::Session.new(:poltergeist)
 session = prepare_session session
 session.visit "https://www.tenders.vic.gov.au/tenders/contract/list.do?action=contract-view"
@@ -295,7 +303,6 @@ def get_revision_number(contract_data)
   end
 end
 
-#session = prepare_session()
 contract_indexes_to_scrape.to_set.each do |contract_index|
   Capybara.reset_sessions!
   session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"

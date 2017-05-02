@@ -136,9 +136,9 @@ end
 
 def clean_agency_link_text text
   if text.include? "("
-    text[0..(text.index("(")-2)]
+    text[0..(text.index("(")-2)].gsub("'","")
   else
-    text
+    text.gsub("'","")
   end
 end
 
@@ -300,7 +300,7 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
   Capybara.reset_sessions!
   session.visit "http://www.tenders.vic.gov.au/tenders/contract/view.do?id=#{contract_index}"
   contract_data = extract_contract_data session.text, contract_index
-  revision = get_revision_number contract_data 
+  revision = get_revision_number contract_data
   contract = {
     'ocds_contract_id' => "#{contract_data[:ocds_contract_id]}_rev-#{revision}",
     'vt_contract_number' => contract_data[:contract_number],
@@ -329,4 +329,3 @@ contract_indexes_to_scrape.to_set.each do |contract_index|
 end
 session.driver.quit
 puts ":: Completed Scraping @ #{Time.now} ::\n"
-
